@@ -14,7 +14,7 @@ export default function LoginPage() {
     try {
       await signInWithEmailAndPassword(auth, email, password);
       window.location.href = '/schedule'; // redirect to protected page
-    } catch (err) {
+    } catch  {
       setError('Login failed. Please check your credentials.');
     }
   };
