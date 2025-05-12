@@ -4,12 +4,25 @@ import { useEffect, useState } from 'react';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
+// Define the type for Shift object
+type Shift = {
+  id: string;
+  employee: string;
+  date: string;
+  start: string;
+  end: string;
+  notes?: string;
+};
+
 export default function ShiftList() {
-  const [shifts, setShifts] = useState<any[]>([]);
+  const [shifts, setShifts] = useState<Shift[]>([]); // Use Shift[] instead of any[]
 
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'shifts'), (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const data: Shift[] = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+      })) as Shift[]; // Ensure the data is treated as a Shift array
       setShifts(data);
     });
 

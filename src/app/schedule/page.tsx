@@ -13,7 +13,7 @@ import { useEffect } from 'react';
 
 export default function SchedulePage() {
   const { user, loading } = useAuth();
-  const { role, loading: roleLoading } = useUserRole(user ?? null);
+  //const { role, loading: roleLoading } = useUserRole(user ?? null);
   const router = useRouter();
 
   useEffect(() => {
@@ -22,7 +22,7 @@ export default function SchedulePage() {
     }
   }, [loading, user, router]);
 
-  if (loading || !user || roleLoading) {
+  if (loading || !user /*|| roleLoading*/) {
     return (
       <main className="min-h-screen flex items-center justify-center">
         <p className="text-gray-500">Loading...</p>
