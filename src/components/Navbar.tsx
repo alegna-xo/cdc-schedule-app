@@ -8,7 +8,7 @@ import { useRouter } from 'next/navigation';
 
 export default function Navbar() {
   const { user, logout } = useAuth();
-  const { role } = useUserRole(user ?? null);
+   const { role } = user ? useUserRole() : { role: null };  // Use condition here
   const router = useRouter();
 
   const handleLogout = async () => {
