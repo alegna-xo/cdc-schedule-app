@@ -8,7 +8,7 @@ import { useRouter } from 'next/navigation';
 
 export default function Navbar() {
   const { user, logout } = useAuth();
-   const { role } = user ? useUserRole() : { role: null };  // Use condition here
+  const { role } = useUserRole(); // Call it unconditionally
   const router = useRouter();
 
   const handleLogout = async () => {
@@ -28,10 +28,13 @@ export default function Navbar() {
       <div className="flex items-center gap-6 text-sm text-gray-700">
         <Link href="/" className="hover:text-blue-600">Home</Link>
         <Link href="/schedule" className="hover:text-blue-600">Schedule</Link>
-        {role === 'admin' && (
+
+        {/* Only show Admin link if the user is logged in and role is admin */}
+        {user && role === 'admin' && (
           <Link href="/admin" className="hover:text-blue-600">Admin</Link>
         )}
-        {user && (
+
+        {user ? (
           <>
             <span className="text-gray-500 hidden sm:inline">{user.email}</span>
             <button
@@ -41,6 +44,10 @@ export default function Navbar() {
               Log out
             </button>
           </>
+        ) : (
+          <Link href="/login" className="text-blue-600 hover:underline">
+            Log in
+          </Link>
         )}
       </div>
     </nav>
