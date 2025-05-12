@@ -1,109 +1,90 @@
 'use client';
 
 import { useState } from 'react';
-import { collection, addDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { collection, addDoc } from 'firebase/firestore';
 
-export default function AddShiftForm({ onShiftAdded }: { onShiftAdded?: () => void }) {
+export default function AddShiftForm() {
   const [employee, setEmployee] = useState('');
   const [date, setDate] = useState('');
-  const [startTime, setStartTime] = useState('');
-  const [endTime, setEndTime] = useState('');
+  const [start, setStart] = useState('');
+  const [end, setEnd] = useState('');
   const [notes, setNotes] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
+    setSaving(true);
 
     try {
       await addDoc(collection(db, 'shifts'), {
         employee,
         date,
-        startTime,
-        endTime,
+        start,
+        end,
         notes,
       });
 
       setEmployee('');
       setDate('');
-      setStartTime('');
-      setEndTime('');
+      setStart('');
+      setEnd('');
       setNotes('');
-
-      if (onShiftAdded) onShiftAdded();
-    } catch (error) {
-      console.error('Error adding shift:', error);
+    } catch (err) {
+      console.error('Error adding shift:', err);
     }
 
-    setLoading(false);
+    setSaving(false);
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 border p-4 rounded-md mt-6">
-      <h2 className="text-lg font-bold">Add New Shift</h2>
-
-      <div>
-        <label className="block text-sm font-medium">Employee Name</label>
+    <form onSubmit={handleSubmit} className="grid gap-4">
+      <input
+        type="text"
+        placeholder="Employee Name"
+        value={employee}
+        onChange={(e) => setEmployee(e.target.value)}
+        required
+        className="border rounded-lg p-2 text-sm focus:outline-blue-500"
+      />
+      <input
+        type="date"
+        value={date}
+        onChange={(e) => setDate(e.target.value)}
+        required
+        className="border rounded-lg p-2 text-sm focus:outline-blue-500"
+      />
+      <div className="flex gap-2">
         <input
-          type="text"
-          value={employee}
-          onChange={(e) => setEmployee(e.target.value)}
-          className="w-full border p-2"
-          required
+          type="time"
+          value={start}
+          onChange={(e) => setStart(e.target.value)}
+          placeholder="Start Time"
+          className="flex-1 border rounded-lg p-2 text-sm focus:outline-blue-500"
         />
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium">Date</label>
         <input
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-          className="w-full border p-2"
-          required
+          type="time"
+          value={end}
+          onChange={(e) => setEnd(e.target.value)}
+          placeholder="End Time"
+          className="flex-1 border rounded-lg p-2 text-sm focus:outline-blue-500"
         />
       </div>
-
-      <div className="flex gap-4">
-        <div className="flex-1">
-          <label className="block text-sm font-medium">Start Time</label>
-          <input
-            type="time"
-            value={startTime}
-            onChange={(e) => setStartTime(e.target.value)}
-            className="w-full border p-2"
-            required
-          />
-        </div>
-
-        <div className="flex-1">
-          <label className="block text-sm font-medium">End Time</label>
-          <input
-            type="time"
-            value={endTime}
-            onChange={(e) => setEndTime(e.target.value)}
-            className="w-full border p-2"
-            required
-          />
-        </div>
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium">Notes</label>
-        <textarea
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          className="w-full border p-2"
-        />
-      </div>
+      <textarea
+        placeholder="Notes (optional)"
+        value={notes}
+        onChange={(e) => setNotes(e.target.value)}
+        className="border rounded-lg p-2 text-sm focus:outline-blue-500"
+      />
 
       <button
         type="submit"
-        className="bg-purple-700 text-white px-4 py-2 rounded disabled:opacity-50"
-        disabled={loading}
+        disabled={saving}
+        className={`px-4 py-2 rounded-md text-white font-medium ${
+          saving ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
+        }`}
       >
-        {loading ? 'Saving...' : 'Add Shift'}
+        {saving ? 'Saving...' : 'Add Shift'}
       </button>
     </form>
   );

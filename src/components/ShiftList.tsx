@@ -1,67 +1,45 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import AddShiftForm from './AddShiftForm';
-
-type Shift = {
-  id: string;
-  employee: string;
-  date: string;
-  startTime: string;
-  endTime: string;
-  notes?: string;
-};
 
 export default function ShiftList() {
-  const [shifts, setShifts] = useState<Shift[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const fetchShifts = async () => {
-    const snapshot = await getDocs(collection(db, 'shifts'));
-    const shiftsData: Shift[] = snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    })) as Shift[];
-
-    setShifts(shiftsData);
-    setLoading(false);
-  };
+  const [shifts, setShifts] = useState<any[]>([]);
 
   useEffect(() => {
-    fetchShifts();
+    const unsubscribe = onSnapshot(collection(db, 'shifts'), (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setShifts(data);
+    });
+
+    return () => unsubscribe();
   }, []);
 
-  if (loading) return <p>Loading shifts...</p>;
-
   return (
-    <div className="mt-6">
-      <AddShiftForm onShiftAdded={fetchShifts} />
-
-      <h2 className="text-xl font-bold mb-2 mt-8">Weekly Shifts</h2>
-      <table className="w-full border border-gray-300 text-sm text-left table-fixed">
-        <thead>
-          <tr className="bg-gray-100">
-            <th className="p-2 border">Employee</th>
-            <th className="p-2 border">Date</th>
-            <th className="p-2 border">Start</th>
-            <th className="p-2 border">End</th>
-            <th className="p-2 border">Notes</th>
-          </tr>
-        </thead>
-        <tbody>
-          {shifts.map((shift) => (
-            <tr key={shift.id}>
-              <td className="p-2 border">{shift.employee || '-'}</td>
-              <td className="p-2 border">{shift.date || '-'}</td>
-              <td className="p-2 border">{shift.startTime || '-'}</td>
-              <td className="p-2 border">{shift.endTime || '-'}</td>
-              <td className="p-2 border">{shift.notes || '-'}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className="grid gap-6">
+      {shifts.length === 0 ? (
+        <p className="text-gray-500 text-center">No shifts added yet.</p>
+      ) : (
+        shifts.map((shift) => (
+          <div
+            key={shift.id}
+            className="bg-white border border-gray-100 shadow-sm rounded-xl p-4 transition hover:shadow-md"
+          >
+            <div className="flex justify-between items-center mb-2">
+              <h3 className="text-lg font-semibold text-blue-800">{shift.employee}</h3>
+              <span className="text-sm text-gray-500">{shift.date}</span>
+            </div>
+            <div className="text-sm text-gray-700">
+              <p><strong>Start:</strong> {shift.start || '—'}</p>
+              <p><strong>End:</strong> {shift.end || '—'}</p>
+              {shift.notes && (
+                <p className="mt-2 text-gray-500 italic">Notes: {shift.notes}</p>
+              )}
+            </div>
+          </div>
+        ))
+      )}
     </div>
   );
 }

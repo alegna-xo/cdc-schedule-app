@@ -1,20 +1,21 @@
-import { useEffect, useState } from 'react';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+'use client';
 
-export function useUserRole(user: { uid: string } | null) {
+import { useEffect, useState } from 'react';
+import { onAuthStateChanged } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
+import { auth, db } from '@/lib/firebase';
+
+export function useUserRole() {
   const [role, setRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!user) {
-      setLoading(false);
-      setRole(null);
-      return;
-    }
-
-    const fetchRole = async () => {
-      console.log('📣 Fetching role for UID:', user.uid);
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        setRole(null);
+        setLoading(false);
+        return;
+      }
 
       try {
         const ref = doc(db, 'users', user.uid);
@@ -22,24 +23,20 @@ export function useUserRole(user: { uid: string } | null) {
 
         if (snap.exists()) {
           const data = snap.data();
-          console.log('🔥 Firestore doc data:', data);
-          console.log('✅ Extracted role from Firestore:', data.role);
           setRole(data.role || null);
         } else {
-          console.warn('⚠️ No Firestore document found for:', user.uid);
           setRole(null);
         }
       } catch (error) {
-        console.error('🔥 Error fetching role:', error);
+        console.error('Error fetching role:', error);
         setRole(null);
       }
 
       setLoading(false);
-    };
+    });
 
-    fetchRole();
-  }, [user]);
+    return () => unsubscribe();
+  }, []);
 
   return { role, loading };
 }
-
