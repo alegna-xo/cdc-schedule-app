@@ -27,9 +27,9 @@ export default function Navbar() {
           height={36}
           className="rounded-full"
         />
-        <Link href="/" className="text-lg font-semibold text-blue-700 hover:underline">
-          CDC Schedule App
-        </Link>
+        <Link href="/profile" className="text-blue-600 hover:underline">
+  Edit My Profile
+</Link>
       </div>
 
       {/* Links */}
