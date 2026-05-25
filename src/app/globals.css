@@ -2,15 +2,36 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Optional: Smooth font rendering */
-html {
-  font-family: 'Inter', sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+/* Global Reset */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
+/* Base Document Styles */
+html,
 body {
-  background-color: #fff;
-  color: #1f2937; /* Tailwind gray-800 */
+  height: 100%;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  background-color: #F8FAFF;
+  color: #1E293B;
   line-height: 1.6;
+}
+
+/* Form Elements */
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+button {
+  cursor: pointer;
 }
