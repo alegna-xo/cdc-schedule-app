@@ -1,124 +1,298 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useUserRole } from '@/hooks/useUserRole';
-import ExcelUploader from '@/components/ExcelUploader';
-import {
-  collection,
-  getDocs,
-  addDoc,
-  doc,
-} from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { UploadIcon } from '@/components/ui/Icon';
+import mockAdminData from '@/data/mockAdminData';
+import colors from '@/styles/colors';
 
-
-export default function AdminDashboard() {
-  const { role, loading } = useUserRole();
+/**
+ * AdminDashboardPage - Screen 6
+ * Route: /admin
+ *
+ * Supervisor home screen. Primary action is uploading the weekly schedule.
+ * Upload history shows previous weeks at a glance.
+ *
+ * Phase 2:
+ *   - Stats pulled from Firestore aggregate queries
+ *   - Upload history queried from schedules collection
+ *   - Upload zone triggers real file picker + parsing flow
+ */
+export default function AdminDashboardPage() {
   const router = useRouter();
-  const [parsedData, setParsedData] = useState([]);
+  const { currentWeek, stats, uploadHistory } = mockAdminData;
 
-  useEffect(() => {
-    if (loading) return;
-    if (role !== 'admin') router.push('/schedule');
-  }, [role, loading, router]);
-
-  const saveScheduleToFirebase = async (excelData) => {
-  const headers = excelData[0];
-  const rows = excelData.slice(1);
-
-  const userSnapshot = await getDocs(collection(db, 'users'));
-  const users = userSnapshot.docs.map((doc) => ({
-    id: doc.id,
-    ...doc.data(),
-  }));
-
-  const weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
-  const startOfWeek = new Date();
-  startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay() + 1); // go to Monday
-
-  for (const row of rows) {
-    const name = row[0];
-    if (!name || typeof name !== 'string') continue;
-
-    const matchedUser = users.find(
-      (u) => u.name?.toLowerCase().trim() === name.toLowerCase().trim()
-    );
-
-    if (!matchedUser) {
-      console.warn(`No match found for: ${name}`);
-      continue;
-    }
-
-    for (let i = 0; i < weekdays.length; i++) {
-      const shiftInfo = row[i + 1];
-      if (!shiftInfo || shiftInfo.toLowerCase().includes('off')) continue;
-
-      const shiftDate = new Date(startOfWeek);
-      shiftDate.setDate(startOfWeek.getDate() + i);
-
-      await addDoc(collection(db, `users/${matchedUser.id}/schedules`), {
-        date: shiftDate.toISOString().split('T')[0],
-        raw: shiftInfo,
-        uploadedAt: new Date().toISOString(),
-      });
-
-      console.log(`✅ Wrote schedule for ${matchedUser.name} on ${weekdays[i]}`);
-    }
+  function handleUploadClick() {
+    router.push('/admin/upload');
   }
 
-  alert('✅ Schedule successfully uploaded to user profiles!');
-};
-
-
-  
-  const handleDataParsed = async (data) => {
-  setParsedData(data);
-  console.log("Parsed Excel Data:", data);
-  await saveScheduleToFirebase(data);
-};
-
-
   return (
-    <main className="min-h-screen px-4 py-12 bg-gray-50">
-      <div className="max-w-4xl mx-auto space-y-10">
-        <h1 className="text-3xl font-bold text-blue-800 text-center">
-          Upload Weekly Flex Schedule
-        </h1>
+    <div style={styles.page}>
 
-        <ExcelUploader onDataParsed={handleDataParsed} />
-
-        {parsedData.length > 0 && (
-          <div className="bg-white border rounded-lg shadow p-6">
-            <h2 className="text-lg font-semibold mb-4">Schedule Preview</h2>
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-sm text-left border border-gray-200">
-                <thead className="bg-gray-100 text-gray-700 text-xs uppercase tracking-wider">
-                  <tr>
-                    {parsedData[0]?.map((header, idx) => (
-                      <th key={idx} className="px-4 py-2 border">{header}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {parsedData.slice(1, 6).map((row, i) => (
-                    <tr key={i} className="hover:bg-gray-50">
-                      {row.map((cell, j) => (
-                        <td key={j} className="px-4 py-2 border whitespace-pre-wrap">
-                          {cell}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <p className="text-xs mt-2 text-gray-500">
-                Showing first 5 rows for preview.
-              </p>
-            </div>
-          </div>
-        )}
+      {/* ── Page header ── */}
+      <div style={styles.pageHeader}>
+        <h1 style={styles.pageTitle}>Admin Dashboard</h1>
+        <p style={styles.pageSubtitle}>{currentWeek}</p>
       </div>
-    </main>
+
+      {/* ── Stats row ── */}
+      <div style={styles.statsRow}>
+        <StatCard
+          value={stats.totalEmployees}
+          label="Total Employees"
+        />
+        <StatCard
+          value={stats.accountsClaimed}
+          label="Accounts Claimed"
+          sub={stats.unclaimed + ' still unclaimed'}
+          subColor={colors.warn}
+        />
+        <StatCard
+          value={stats.lastUploadDate}
+          label="Last Upload"
+          sub={stats.lastUploadTime}
+          subColor={colors.textLight}
+          smallValue
+        />
+      </div>
+
+      {/* ── Upload zone ── */}
+      <div
+        style={styles.uploadZone}
+        onClick={handleUploadClick}
+        role="button"
+        tabIndex={0}
+        aria-label="Upload schedule"
+        onKeyDown={e => e.key === 'Enter' && handleUploadClick()}
+      >
+        <div style={styles.uploadIcon}>
+          <UploadIcon color={colors.blue} size={40} />
+        </div>
+        <p style={styles.uploadTitle}>Drag and Drop Schedule Here</p>
+        <p style={styles.uploadSubtext}>
+          Click to preview before publishing · .xlsx or .xls only
+        </p>
+        <button
+          onClick={e => { e.stopPropagation(); handleUploadClick(); }}
+          style={styles.uploadButton}
+        >
+          Browse Files
+        </button>
+      </div>
+
+      {/* ── Upload history ── */}
+      <div style={styles.historyCard}>
+        <div style={styles.historyHeader}>
+          <p style={styles.historyTitle}>Upload History</p>
+          <p style={styles.historyHint}>Prevents duplicate uploads</p>
+        </div>
+
+        {uploadHistory.map((entry, i) => (
+          <div
+            key={entry.id}
+            style={{
+              ...styles.historyRow,
+              borderBottom: i < uploadHistory.length - 1
+                ? '1px solid ' + colors.offWhite
+                : 'none',
+            }}
+          >
+            <div>
+              <p style={styles.historyWeek}>Week of {entry.weekLabel}</p>
+              <p style={styles.historyDate}>Uploaded {entry.uploadedAt}</p>
+            </div>
+            <StatusBadge status={entry.status} />
+          </div>
+        ))}
+      </div>
+
+    </div>
   );
 }
+
+// -----------------------------------------------------------------------------
+// StatCard
+// -----------------------------------------------------------------------------
+function StatCard({ value, label, sub, subColor, smallValue }) {
+  return (
+    <div style={statStyles.card}>
+      <p style={{
+        ...statStyles.value,
+        fontSize: smallValue ? 20 : 28,
+        marginTop: smallValue ? 10 : 8,
+      }}>
+        {value}
+      </p>
+      <p style={statStyles.label}>{label}</p>
+      {sub && (
+        <p style={{ ...statStyles.sub, color: subColor }}>{sub}</p>
+      )}
+    </div>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// StatusBadge
+// -----------------------------------------------------------------------------
+function StatusBadge({ status }) {
+  const isActive = status === 'active';
+  return (
+    <span style={{
+      ...badgeStyles.base,
+      background: isActive ? colors.successBg  : colors.offWhite,
+      color:      isActive ? colors.success    : colors.textMuted,
+      border:     '1px solid ' + (isActive ? colors.successBd : colors.border),
+    }}>
+      {isActive ? 'Active' : 'Past'}
+    </span>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// Styles
+// -----------------------------------------------------------------------------
+const styles = {
+  page: {
+    padding: '28px 28px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 22,
+    maxWidth: 900,
+  },
+
+  pageHeader: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
+  },
+  pageTitle: {
+    fontSize: 22,
+    fontWeight: 800,
+    color: colors.textPrimary,
+    letterSpacing: -0.3,
+  },
+  pageSubtitle: {
+    fontSize: 13,
+    color: colors.textMuted,
+  },
+
+  // Stats
+  statsRow: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr 1fr',
+    gap: 14,
+  },
+
+  // Upload zone
+  uploadZone: {
+    background: colors.white,
+    border: '2.5px dashed ' + colors.blueBorder,
+    borderRadius: 14,
+    padding: '36px 24px',
+    textAlign: 'center',
+    cursor: 'pointer',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 8,
+  },
+  uploadIcon: {
+    marginBottom: 4,
+  },
+  uploadTitle: {
+    fontSize: 17,
+    fontWeight: 800,
+    color: colors.blue,
+  },
+  uploadSubtext: {
+    fontSize: 12,
+    color: colors.textMuted,
+  },
+  uploadButton: {
+    marginTop: 8,
+    padding: '9px 26px',
+    background: colors.blue,
+    color: colors.white,
+    border: 'none',
+    borderRadius: 8,
+    fontSize: 13,
+    fontWeight: 700,
+    cursor: 'pointer',
+    boxShadow: '0 2px 8px rgba(37,99,235,0.25)',
+  },
+
+  // Upload history
+  historyCard: {
+    background: colors.white,
+    border: '1.5px solid ' + colors.border,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  historyHeader: {
+    padding: '13px 18px',
+    borderBottom: '1px solid ' + colors.offWhite,
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  historyTitle: {
+    fontSize: 13,
+    fontWeight: 700,
+    color: colors.textPrimary,
+  },
+  historyHint: {
+    fontSize: 11,
+    color: colors.textLight,
+  },
+  historyRow: {
+    padding: '12px 18px',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  historyWeek: {
+    fontSize: 13,
+    fontWeight: 600,
+    color: colors.textPrimary,
+  },
+  historyDate: {
+    fontSize: 11,
+    color: colors.textLight,
+    marginTop: 2,
+  },
+};
+
+const statStyles = {
+  card: {
+    background: colors.white,
+    border: '1.5px solid ' + colors.border,
+    borderRadius: 12,
+    padding: '16px 18px',
+  },
+  value: {
+    fontWeight: 900,
+    color: colors.textPrimary,
+    lineHeight: 1,
+  },
+  label: {
+    fontSize: 11,
+    color: colors.textMuted,
+    marginTop: 6,
+  },
+  sub: {
+    fontSize: 10,
+    fontWeight: 600,
+    marginTop: 3,
+  },
+};
+
+const badgeStyles = {
+  base: {
+    display: 'inline-block',
+    padding: '3px 10px',
+    borderRadius: 20,
+    fontSize: 11,
+    fontWeight: 700,
+    letterSpacing: 0.2,
+    flexShrink: 0,
+  },
+};
