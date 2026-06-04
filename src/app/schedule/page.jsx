@@ -4,35 +4,48 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import EmployeePageHeader from '@/features/employee/EmployeePageHeader';
 import BottomNav from '@/features/employee/BottomNav';
-import { LockIcon } from '@/components/ui/Icon';
+import { LockIcon, InboxIcon } from '@/components/ui/Icon';
 import mockSchedule from '@/data/mockSchedule';
 import colors from '@/styles/colors';
 
 /**
- * SchedulePage — Screen 3: My Schedule
+ * SchedulePage - Screens 3 and 4
  * Route: /schedule
  *
- * Employee's primary screen. Shows the current week schedule with a
- * tabbed day selector. Tapping a day reveals that day's room, hours,
- * and any special notes (Breaker Shift, CLOSED, etc.).
+ * Screen 3: Full weekly schedule with day tabs (isPublished: true)
+ * Screen 4: No Schedule Yet empty state  (isPublished: false)
  *
- * Phase 1: Renders mock data from mockSchedule.js
- * Phase 2: Fetch from Firestore using the authenticated user's uid
- *          and the current week's document id.
+ * Phase 2: Replace mockSchedule import with a Firestore fetch.
+ * Null document or isPublished false = Screen 4.
+ * Document exists and isPublished true  = Screen 3.
  */
 export default function SchedulePage() {
   const router = useRouter();
-
-  // Default to Monday (index 0) on load
   const [activeDayIndex, setActiveDayIndex] = useState(0);
 
-  const { employee, weekLabel, weekNumber, days } = mockSchedule;
+  const { employee, weekLabel, weekNumber, days, isPublished } = mockSchedule;
   const activeDay = days[activeDayIndex];
 
+  // Screen 4 - No Schedule Yet
+  if (!isPublished) {
+    return (
+      <main style={styles.main}>
+        <EmployeePageHeader
+          name={employee.name}
+          initials={employee.initials}
+          weekLabel={weekLabel}
+          group={employee.group}
+          onAvatarClick={() => router.push('/profile')}
+        />
+        <NoScheduleContent />
+        <BottomNav active="schedule" />
+      </main>
+    );
+  }
+
+  // Screen 3 - Full schedule
   return (
     <main style={styles.main}>
-
-      {/* ── Shared header with day tabs passed as children ── */}
       <EmployeePageHeader
         name={employee.name}
         initials={employee.initials}
@@ -47,7 +60,6 @@ export default function SchedulePage() {
         />
       </EmployeePageHeader>
 
-      {/* ── Day content ── */}
       <div style={styles.content}>
         {activeDay.closed
           ? <ClosedDayContent day={activeDay} />
@@ -55,20 +67,15 @@ export default function SchedulePage() {
         }
       </div>
 
-      {/* ── Shared bottom nav ── */}
       <BottomNav active="schedule" />
-
     </main>
   );
 }
 
-// ─── DayTabBar ────────────────────────────────────────────────────────────────
-/**
- * Horizontal tab row showing MON–FRI with date numbers.
- * Active tab: white text + red underline indicator.
- * Closed days: small red dot below the date number.
- * Local to this screen — only Schedule uses day tabs.
- */
+// -----------------------------------------------------------------------------
+// DayTabBar
+// Horizontal MON-FRI tab selector. Local to this screen only.
+// -----------------------------------------------------------------------------
 function DayTabBar({ days, activeDayIndex, onSelect }) {
   return (
     <div style={tabStyles.bar} role="tablist" aria-label="Day selector">
@@ -79,30 +86,24 @@ function DayTabBar({ days, activeDayIndex, onSelect }) {
             key={day.id}
             role="tab"
             aria-selected={isActive}
-            aria-controls={`day-panel-${day.id}`}
             onClick={() => onSelect(i)}
             style={tabStyles.tab}
           >
             <span style={{
               ...tabStyles.shortLabel,
-              color: isActive ? colors.red : 'rgba(255, 255, 255, 0.45)',
+              color: isActive ? colors.red : 'rgba(255,255,255,0.45)',
             }}>
               {day.short}
             </span>
-
             <span style={{
               ...tabStyles.dateNumber,
-              color: isActive ? colors.white : 'rgba(255, 255, 255, 0.45)',
+              color: isActive ? colors.white : 'rgba(255,255,255,0.45)',
             }}>
               {day.date}
             </span>
-
-            {/* Closed day indicator dot */}
             {day.closed && (
               <div style={tabStyles.closedDot} aria-hidden="true" />
             )}
-
-            {/* Active underline */}
             {isActive && (
               <div style={tabStyles.activeBar} aria-hidden="true" />
             )}
@@ -113,64 +114,43 @@ function DayTabBar({ days, activeDayIndex, onSelect }) {
   );
 }
 
-// ─── ClosedDayContent ─────────────────────────────────────────────────────────
-/**
- * Shown when the selected day is closed (CDC closed or employee day off).
- * Centered layout with lock icon and closed badge.
- */
+// -----------------------------------------------------------------------------
+// ClosedDayContent
+// Shown when the selected day is closed (CDC closed or day off).
+// -----------------------------------------------------------------------------
 function ClosedDayContent({ day }) {
   return (
-    <div
-      style={closedStyles.container}
-      role="tabpanel"
-      id={`day-panel-${day.id}`}
-      aria-label={`${day.label} — closed`}
-    >
+    <div style={closedStyles.container}>
       <div style={closedStyles.iconWrapper}>
         <LockIcon color={colors.red} size={28} />
       </div>
-
       <h2 style={closedStyles.heading}>CDC Closed</h2>
-
       <p style={closedStyles.subtext}>
         No shift scheduled for {day.label}.
       </p>
-
       <span style={closedStyles.badge}>
-        CLOSED · {day.short} Jun {day.date}
+        CLOSED - {day.short} Jun {day.date}
       </span>
     </div>
   );
 }
 
-// ─── ActiveDayContent ─────────────────────────────────────────────────────────
-/**
- * Shown for a normal working day.
- * Displays classroom, shift hours with progress bar, and date.
- * Breaker Shift days get a purple classroom card variant.
- */
+// -----------------------------------------------------------------------------
+// ActiveDayContent
+// Shown for a normal working day. Purple variant for Breaker Shift.
+// -----------------------------------------------------------------------------
 function ActiveDayContent({ day, weekNumber }) {
   const isBreaker = day.note === 'Breaker Shift';
-
-  // Calculate shift length in minutes for the progress bar
   const shiftMinutes = calcShiftMinutes(day.start, day.end);
-  // Progress bar fills relative to a 10-hour (600 min) max shift
   const progressPercent = Math.min(100, (shiftMinutes / 600) * 100);
   const shiftDurationLabel = formatShiftDuration(shiftMinutes);
 
   return (
-    <div
-      role="tabpanel"
-      id={`day-panel-${day.id}`}
-      aria-label={`${day.label} schedule`}
-      style={activeStyles.container}
-    >
-
-      {/* Classroom card — purple variant for Breaker Shift */}
+    <div style={activeStyles.container}>
       <div style={{
         ...activeStyles.classroomCard,
-        background:   isBreaker ? colors.purpleLight : colors.white,
-        borderColor:  isBreaker ? colors.purpleBorder : colors.border,
+        background: isBreaker ? colors.purpleLight : colors.white,
+        borderColor: isBreaker ? colors.purpleBorder : colors.border,
       }}>
         <p style={activeStyles.cardLabel}>Classroom</p>
         <p style={activeStyles.classroomName}>{day.room}</p>
@@ -179,58 +159,76 @@ function ActiveDayContent({ day, weekNumber }) {
         )}
       </div>
 
-      {/* Shift hours card — royal blue with red progress bar */}
       <div style={activeStyles.hoursCard}>
         <p style={activeStyles.hoursLabel}>Shift Hours</p>
         <p style={activeStyles.hoursTime}>
           {day.start}
-          <span style={activeStyles.hoursDash}> – </span>
+          <span style={activeStyles.hoursDash}> - </span>
           {day.end}
         </p>
-
-        {/* Progress bar */}
         <div style={activeStyles.progressTrack} aria-hidden="true">
           <div style={{
             ...activeStyles.progressFill,
-            width: `${progressPercent}%`,
+            width: progressPercent + '%',
           }} />
         </div>
-
         <p style={activeStyles.shiftDuration}>{shiftDurationLabel}</p>
       </div>
 
-      {/* Date chip */}
       <div style={activeStyles.dateChip}>
         <p style={activeStyles.dateChipLabel}>Date</p>
         <p style={activeStyles.dateChipValue}>{day.full}</p>
         <span style={activeStyles.weekBadge}>Week {weekNumber}</span>
       </div>
-
     </div>
   );
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
+// NoScheduleContent - Screen 4
+// Shown when isPublished is false or no Firestore doc exists for this week.
+// -----------------------------------------------------------------------------
+function NoScheduleContent() {
+  return (
+    <div style={noSchedStyles.container}>
+      <div style={noSchedStyles.iconWrapper}>
+        <InboxIcon color={colors.textLight} size={40} />
+      </div>
+      <div style={noSchedStyles.textBlock}>
+        <h2 style={noSchedStyles.heading}>No Schedule Yet</h2>
+        <p style={noSchedStyles.subtext}>
+          Your schedule for this week has not been posted yet. Check back soon.
+        </p>
+      </div>
+      <div style={noSchedStyles.refreshPrompt}>
+        <p style={noSchedStyles.refreshText}>Pull down to refresh</p>
+      </div>
+    </div>
+  );
+}
 
-/** Returns shift length in minutes from "HH:MM" start/end strings. */
+// -----------------------------------------------------------------------------
+// Helpers
+// -----------------------------------------------------------------------------
 function calcShiftMinutes(start, end) {
   if (!start || !end) return 0;
   const toMins = (t) => {
-    const [h, m] = t.split(':').map(Number);
-    return h * 60 + m;
+    const parts = t.split(':').map(Number);
+    return parts[0] * 60 + parts[1];
   };
   return toMins(end) - toMins(start);
 }
 
-/** Returns a human-readable duration string, e.g. "10h shift" or "9h 30m shift" */
 function formatShiftDuration(totalMinutes) {
   const hours = Math.floor(totalMinutes / 60);
-  const mins  = totalMinutes % 60;
-  return mins > 0 ? `${hours}h ${mins}m shift` : `${hours}h shift`;
+  const mins = totalMinutes % 60;
+  if (mins > 0) return hours + 'h ' + mins + 'm shift';
+  return hours + 'h shift';
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
-
+// -----------------------------------------------------------------------------
+// Styles
+// -----------------------------------------------------------------------------
 const styles = {
   main: {
     minHeight: '100dvh',
@@ -247,6 +245,60 @@ const styles = {
     flexDirection: 'column',
     gap: 13,
     overflowY: 'auto',
+  },
+};
+
+const noSchedStyles = {
+  container: {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '40px 28px',
+    gap: 18,
+  },
+  iconWrapper: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    background: colors.white,
+    border: '2px solid ' + colors.border,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  textBlock: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+    alignItems: 'center',
+  },
+  heading: {
+    fontSize: 20,
+    fontWeight: 800,
+    color: colors.textPrimary,
+    textAlign: 'center',
+  },
+  subtext: {
+    fontSize: 13,
+    color: colors.textMuted,
+    textAlign: 'center',
+    lineHeight: 1.7,
+  },
+  refreshPrompt: {
+    background: colors.purpleLight,
+    border: '1.5px solid ' + colors.purpleBorder,
+    borderRadius: 10,
+    padding: '11px 18px',
+    width: '100%',
+    maxWidth: 320,
+    textAlign: 'center',
+  },
+  refreshText: {
+    fontSize: 12,
+    color: colors.purpleDark,
+    fontWeight: 600,
   },
 };
 
@@ -300,7 +352,7 @@ const closedStyles = {
     flex: 1,
     background: colors.white,
     borderRadius: 18,
-    border: `2px solid ${colors.border}`,
+    border: '2px solid ' + colors.border,
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
@@ -314,7 +366,7 @@ const closedStyles = {
     height: 68,
     borderRadius: 34,
     background: colors.redLight,
-    border: `2px solid ${colors.redBorder}`,
+    border: '2px solid ' + colors.redBorder,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -333,7 +385,7 @@ const closedStyles = {
   badge: {
     background: colors.redLight,
     color: colors.red,
-    border: `2px solid ${colors.redBorder}`,
+    border: '2px solid ' + colors.redBorder,
     padding: '5px 16px',
     borderRadius: 20,
     fontSize: 11,
@@ -348,8 +400,6 @@ const activeStyles = {
     flexDirection: 'column',
     gap: 13,
   },
-
-  // Classroom card
   classroomCard: {
     borderRadius: 16,
     border: '2px solid',
@@ -380,18 +430,16 @@ const activeStyles = {
     color: colors.white,
     letterSpacing: 0.3,
   },
-
-  // Hours card
   hoursCard: {
-    background: `linear-gradient(135deg, ${colors.blue} 0%, ${colors.blueDark} 100%)`,
+    background: 'linear-gradient(135deg, ' + colors.blue + ' 0%, ' + colors.blueDark + ' 100%)',
     borderRadius: 16,
     padding: '18px 20px',
-    boxShadow: `0 6px 20px rgba(37, 99, 235, 0.30)`,
+    boxShadow: '0 6px 20px rgba(37,99,235,0.30)',
   },
   hoursLabel: {
     fontSize: 10,
     fontWeight: 700,
-    color: 'rgba(255, 255, 255, 0.5)',
+    color: 'rgba(255,255,255,0.5)',
     textTransform: 'uppercase',
     letterSpacing: 1,
     marginBottom: 7,
@@ -411,7 +459,7 @@ const activeStyles = {
   progressTrack: {
     marginTop: 12,
     height: 5,
-    background: 'rgba(255, 255, 255, 0.15)',
+    background: 'rgba(255,255,255,0.15)',
     borderRadius: 3,
     overflow: 'hidden',
   },
@@ -423,13 +471,11 @@ const activeStyles = {
   shiftDuration: {
     marginTop: 6,
     fontSize: 11,
-    color: 'rgba(255, 255, 255, 0.5)',
+    color: 'rgba(255,255,255,0.5)',
   },
-
-  // Date chip
   dateChip: {
     background: colors.white,
-    border: `2px solid ${colors.border}`,
+    border: '2px solid ' + colors.border,
     borderRadius: 12,
     padding: '12px 16px',
     display: 'flex',
