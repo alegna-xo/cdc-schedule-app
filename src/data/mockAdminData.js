@@ -1,12 +1,12 @@
 /**
  * Mock Admin Data — Phase 1
  *
- * Simulates data the admin dashboard reads from Firestore in Phase 2.
+ * Simulates data the admin screens read from Firestore in Phase 2.
  *
  * Phase 2 replacements:
- *   stats         → aggregate queries on the users and schedules collections
+ *   stats         → aggregate Firestore queries on users + schedules collections
  *   uploadHistory → query schedules collection ordered by uploadedAt desc
- *   currentWeek   → derived from current date + schedule document
+ *   uploadPreview → result of parsing the uploaded Excel file
  */
 
 const mockAdminData = {
@@ -40,6 +40,39 @@ const mockAdminData = {
       status:     'past',
     },
   ],
+
+  // Simulates the result of parsing an uploaded Excel file.
+  // Phase 2: this data comes from the Excel parser after file selection.
+  uploadPreview: {
+    weekDetected:    'Jun 16–20',
+    employeesFound:  88,
+    rowsParsed:      440,
+    isDuplicate:     true, // true = a schedule for this week already exists
+
+    // Preview rows — subset of all 88 employees
+    previewRows: [
+      {
+        name: 'Angela L.',
+        days: ['302 / 07:15', '302 / 07:15', '402 Breaker', 'CLOSED', '210 / 07:30'],
+      },
+      {
+        name: 'Catlyn L.',
+        days: ['See Mgr', 'See Mgr', 'See Mgr', 'CLOSED', '402 / 10:00'],
+      },
+      {
+        name: 'Gisela M.',
+        days: ['07:15–17:15', '302 / 07:15', '302 / 07:15', 'CLOSED', 'Breaker'],
+      },
+      {
+        name: 'Kayle D.',
+        days: ['07:00–11:00', '504 / 07:30', '504 / 09:00', 'N/A', 'N/A'],
+      },
+      {
+        name: 'Hannah R.',
+        days: ['402 / 09:00', '402 / 09:00', '402 / 09:00', 'CLOSED', 'OFF'],
+      },
+    ],
+  },
 };
 
 export default mockAdminData;
