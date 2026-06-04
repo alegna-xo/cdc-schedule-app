@@ -6,26 +6,41 @@ import { GoogleIcon } from '@/components/ui/Icon';
 import colors from '@/styles/colors';
 
 /**
- * LoginPage — Screen 1
+ * LoginPage - Screen 1
+ * Route: /login
  *
  * Single entry point for all users.
- * In Phase 1: "Sign in with Google" is a mock — routes to /onboarding.
- * In Phase 2: Google OAuth will determine role and route accordingly:
- *   - Admin email  → /admin
- *   - First-time   → /onboarding
- *   - Returning    → /schedule
+ *
+ * Phase 1: Two dev-mode buttons route to employee or admin flow manually.
+ *          The "Sign in with Google" button is a placeholder UI only.
+ *
+ * Phase 2: Remove the dev mode section entirely.
+ *          "Sign in with Google" triggers Firebase Google OAuth.
+ *          After sign-in, check user role in Firestore:
+ *            - role === 'admin'    → router.push('/admin')
+ *            - nameClaimed: false  → router.push('/onboarding')
+ *            - nameClaimed: true   → router.push('/schedule')
  */
 export default function LoginPage() {
   const router = useRouter();
 
-  // Phase 1 mock — no real auth yet
-  // Phase 2: replace with Firebase Google OAuth
-  function handleSignIn() {
+  // Phase 2: replace this with Firebase signInWithPopup(auth, googleProvider)
+  function handleGoogleSignIn() {
+    // Placeholder - no action in Phase 1
+    // Real auth goes here in Phase 2
+  }
+
+  function handleEmployeeLogin() {
     router.push('/onboarding');
+  }
+
+  function handleAdminLogin() {
+    router.push('/admin');
   }
 
   return (
     <main style={styles.main}>
+
       {/* ── Header ── */}
       <div style={styles.header}>
         <CDCShield size={72} />
@@ -45,9 +60,9 @@ export default function LoginPage() {
           </p>
         </div>
 
-        {/* Google SSO button */}
+        {/* Google SSO button - Phase 2: wire to Firebase OAuth */}
         <button
-          onClick={handleSignIn}
+          onClick={handleGoogleSignIn}
           style={styles.googleButton}
           aria-label="Sign in with Google"
         >
@@ -66,33 +81,57 @@ export default function LoginPage() {
             One-time simple sign in process for first-time users.
           </p>
         </div>
+
+        {/* ── Dev Mode — Phase 1 only ── */}
+        {/* DELETE this entire block when Firebase auth is implemented in Phase 2 */}
+        <div style={styles.devBlock}>
+          <p style={styles.devLabel}>DEV MODE · Phase 1 Only</p>
+          <p style={styles.devSubtext}>
+            Firebase auth not yet implemented. Select a role to navigate manually.
+          </p>
+          <div style={styles.devButtons}>
+            <button
+              onClick={handleEmployeeLogin}
+              style={styles.devButtonEmployee}
+            >
+              Continue as Employee
+            </button>
+            <button
+              onClick={handleAdminLogin}
+              style={styles.devButtonAdmin}
+            >
+              Continue as Admin
+            </button>
+          </div>
+        </div>
+
       </div>
 
       {/* ── Footer ── */}
       <footer style={styles.footer}>
         <p style={styles.footerText}>CDC · Eglin AFB · Dept. of the Air Force</p>
       </footer>
+
     </main>
   );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
-// Kept co-located with the component for now.
-// When the design system grows, these move to a shared stylesheet.
-
+// -----------------------------------------------------------------------------
+// Styles
+// -----------------------------------------------------------------------------
 const styles = {
   main: {
     minHeight: '100dvh',
-    display: 'flex',
-    flexDirection: 'column',
-    background: colors.white,
     maxWidth: 480,
     margin: '0 auto',
+    background: colors.white,
+    display: 'flex',
+    flexDirection: 'column',
   },
 
-  // Header — royal blue gradient, shield + title
+  // Header
   header: {
-    background: `linear-gradient(150deg, ${colors.blue} 0%, ${colors.blueDark} 100%)`,
+    background: 'linear-gradient(150deg, ' + colors.blue + ' 0%, ' + colors.blueDark + ' 100%)',
     padding: '44px 28px 36px',
     display: 'flex',
     flexDirection: 'column',
@@ -111,7 +150,7 @@ const styles = {
   },
   appSubtitle: {
     fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.65)',
+    color: 'rgba(255,255,255,0.65)',
     marginTop: 5,
     letterSpacing: 0.3,
   },
@@ -145,7 +184,7 @@ const styles = {
   googleButton: {
     width: '100%',
     padding: '15px 16px',
-    border: `2px solid ${colors.border}`,
+    border: '2px solid ' + colors.border,
     borderRadius: 14,
     background: colors.white,
     display: 'flex',
@@ -155,25 +194,23 @@ const styles = {
     fontSize: 15,
     fontWeight: 700,
     color: colors.textPrimary,
-    boxShadow: '0 2px 12px rgba(37, 99, 235, 0.1)',
-    transition: 'box-shadow 0.15s ease, border-color 0.15s ease',
+    boxShadow: '0 2px 12px rgba(37,99,235,0.1)',
+    cursor: 'pointer',
   },
-
   helperText: {
     textAlign: 'center',
     fontSize: 11,
     color: colors.textLight,
     marginTop: -8,
   },
-
   divider: {
-    borderTop: `1.5px solid ${colors.border}`,
+    borderTop: '1.5px solid ' + colors.border,
   },
 
-  // First-time callout — purple
+  // First-time callout
   firstTimeBox: {
     background: colors.purpleLight,
-    border: `2px solid ${colors.purpleBorder}`,
+    border: '2px solid ' + colors.purpleBorder,
     borderRadius: 14,
     padding: '16px 18px',
     display: 'flex',
@@ -191,11 +228,61 @@ const styles = {
     lineHeight: 1.65,
   },
 
+  // Dev mode block
+  devBlock: {
+    border: '2px dashed ' + colors.borderDark,
+    borderRadius: 14,
+    padding: '16px 18px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
+    background: colors.offWhite,
+  },
+  devLabel: {
+    fontSize: 10,
+    fontWeight: 800,
+    color: colors.textMuted,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  devSubtext: {
+    fontSize: 11,
+    color: colors.textLight,
+    lineHeight: 1.5,
+    marginTop: -4,
+  },
+  devButtons: {
+    display: 'flex',
+    gap: 10,
+  },
+  devButtonEmployee: {
+    flex: 1,
+    padding: '10px 8px',
+    borderRadius: 10,
+    border: '1.5px solid ' + colors.blueBorder,
+    background: colors.blueLight,
+    color: colors.blue,
+    fontSize: 12,
+    fontWeight: 700,
+    cursor: 'pointer',
+  },
+  devButtonAdmin: {
+    flex: 1,
+    padding: '10px 8px',
+    borderRadius: 10,
+    border: '1.5px solid ' + colors.purpleBorder,
+    background: colors.purpleLight,
+    color: colors.purpleDark,
+    fontSize: 12,
+    fontWeight: 700,
+    cursor: 'pointer',
+  },
+
   // Footer
   footer: {
     padding: '10px 26px 20px',
     textAlign: 'center',
-    borderTop: `1px solid ${colors.border}`,
+    borderTop: '1px solid ' + colors.border,
   },
   footerText: {
     fontSize: 10,
