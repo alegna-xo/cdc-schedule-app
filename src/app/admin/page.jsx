@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { UploadIcon } from '@/components/ui/Icon';
 import mockAdminData from '@/data/mockAdminData';
@@ -9,24 +10,77 @@ import colors from '@/styles/colors';
  * AdminDashboardPage - Screen 6
  * Route: /admin
  *
- * Supervisor home screen. Primary action is uploading the weekly schedule.
- * Upload history shows previous weeks at a glance.
+ * Upload zone accepts .xlsx/.xls via drag-and-drop or file picker.
+ * Parsed result is stored in sessionStorage("pendingSchedule") and
+ * the user is routed to /admin/upload for review before publishing.
  *
- * Phase 2:
- *   - Stats pulled from Firestore aggregate queries
- *   - Upload history queried from schedules collection
- *   - Upload zone triggers real file picker + parsing flow
+ * Stats and upload history still use mock data (Phase 3).
  */
 export default function AdminDashboardPage() {
   const router = useRouter();
   const { currentWeek, stats, uploadHistory } = mockAdminData;
 
-  function handleUploadClick() {
-    router.push('/admin/upload');
+  const fileInputRef  = useRef(null);
+  const [isDragging,  setIsDragging]  = useState(false);
+  const [isParsing,   setIsParsing]   = useState(false);
+  const [uploadError, setUploadError] = useState('');
+
+  async function handleFile(file) {
+    if (!file) return;
+
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (!['xlsx', 'xls'].includes(ext)) {
+      setUploadError('Please select an .xlsx or .xls file.');
+      return;
+    }
+
+    setIsParsing(true);
+    setUploadError('');
+
+    try {
+      // Dynamic import keeps the xlsx bundle out of the initial page load
+      const { parseScheduleFile } = await import('@/lib/excelParser');
+      const result = await parseScheduleFile(file);
+      sessionStorage.setItem('pendingSchedule', JSON.stringify(result));
+      router.push('/admin/upload');
+    } catch (err) {
+      console.error('[admin] parse error:', err);
+      setUploadError(err.message || 'Failed to parse file. Check the format and try again.');
+      setIsParsing(false);
+    }
+  }
+
+  function handleFileChange(e) {
+    handleFile(e.target.files?.[0]);
+    e.target.value = ''; // reset so the same file can be re-selected
+  }
+
+  function handleDragOver(e) {
+    e.preventDefault();
+    setIsDragging(true);
+  }
+
+  function handleDragLeave() {
+    setIsDragging(false);
+  }
+
+  function handleDrop(e) {
+    e.preventDefault();
+    setIsDragging(false);
+    handleFile(e.dataTransfer.files?.[0]);
   }
 
   return (
     <div style={styles.page}>
+
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".xlsx,.xls"
+        style={{ display: 'none' }}
+        onChange={handleFileChange}
+      />
 
       {/* ── Page header ── */}
       <div style={styles.pageHeader}>
@@ -57,27 +111,47 @@ export default function AdminDashboardPage() {
 
       {/* ── Upload zone ── */}
       <div
-        style={styles.uploadZone}
-        onClick={handleUploadClick}
+        style={{
+          ...styles.uploadZone,
+          border: `2.5px dashed ${isDragging ? colors.blue : colors.blueBorder}`,
+          background: isDragging ? colors.blueLight : colors.white,
+        }}
+        onClick={() => !isParsing && fileInputRef.current?.click()}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
         role="button"
         tabIndex={0}
         aria-label="Upload schedule"
-        onKeyDown={e => e.key === 'Enter' && handleUploadClick()}
+        onKeyDown={e => e.key === 'Enter' && fileInputRef.current?.click()}
       >
         <div style={styles.uploadIcon}>
-          <UploadIcon color={colors.blue} size={40} />
+          <UploadIcon color={isDragging ? colors.blueDark : colors.blue} size={40} />
         </div>
-        <p style={styles.uploadTitle}>Drag and Drop Schedule Here</p>
+        <p style={styles.uploadTitle}>
+          {isParsing ? 'Parsing file…' : 'Drag and Drop Schedule Here'}
+        </p>
         <p style={styles.uploadSubtext}>
-          Click to preview before publishing · .xlsx or .xls only
+          {isParsing
+            ? 'Reading employee rows from Excel…'
+            : 'Click to preview before publishing · .xlsx or .xls only'}
         </p>
         <button
-          onClick={e => { e.stopPropagation(); handleUploadClick(); }}
-          style={styles.uploadButton}
+          onClick={e => { e.stopPropagation(); fileInputRef.current?.click(); }}
+          style={{
+            ...styles.uploadButton,
+            opacity: isParsing ? 0.6 : 1,
+            cursor:  isParsing ? 'not-allowed' : 'pointer',
+          }}
+          disabled={isParsing}
         >
-          Browse Files
+          {isParsing ? 'Parsing…' : 'Browse Files'}
         </button>
       </div>
+
+      {uploadError && (
+        <p style={styles.uploadError}>{uploadError}</p>
+      )}
 
       {/* ── Upload history ── */}
       <div style={styles.historyCard}>
@@ -218,6 +292,13 @@ const styles = {
     fontWeight: 700,
     cursor: 'pointer',
     boxShadow: '0 2px 8px rgba(37,99,235,0.25)',
+    transition: 'opacity 0.15s',
+  },
+  uploadError: {
+    fontSize: 12,
+    color: colors.red,
+    textAlign: 'center',
+    marginTop: -10,
   },
 
   // Upload history

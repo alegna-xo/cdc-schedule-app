@@ -1,39 +1,129 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { doc, getDoc, writeBatch, serverTimestamp } from 'firebase/firestore';
 import { WarnIcon } from '@/components/ui/Icon';
-import mockAdminData from '@/data/mockAdminData';
 import colors from '@/styles/colors';
+import { db } from '@/lib/firebase';
+import { buildWeekDays, getWeekNumber } from '@/lib/scheduleUtils';
 
 /**
  * UploadPreviewPage - Screen 7
  * Route: /admin/upload
  *
- * Admin reviews the parsed schedule before publishing.
- * Duplicate week warning shown if a schedule for this week exists.
- * Confirm checkbox must be checked before publish button activates.
+ * Reads parsed schedule from sessionStorage("pendingSchedule").
+ * Checks Firestore for a duplicate week before allowing publish.
+ * Confirm checkbox + batch Firestore write on publish.
  *
- * Phase 1: All data is mock. Publish routes to /admin/schedule.
- * Phase 2:
- *   - File is parsed client-side using SheetJS (xlsx library)
- *   - Preview data comes from the parsed Excel result
- *   - Publish writes schedule data to Firestore, sets isPublished: true
- *   - All employees see updated schedule immediately
+ * Firestore write structure:
+ *   schedules/{weekId}                         → week metadata doc (for duplicate detection)
+ *   schedules/{weekId}/employees/{scheduleKey} → per-employee schedule
+ *
+ * Batch limit: 500 ops. At ~88 employees + 1 parent = 89 ops. Safe.
  */
 export default function UploadPreviewPage() {
   const router = useRouter();
-  const [confirmed, setConfirmed] = useState(false);
+  const [confirmed,     setConfirmed]     = useState(false);
+  const [pending,       setPending]       = useState(null);
+  const [isDuplicate,   setIsDuplicate]   = useState(false);
+  const [isPublishing,  setIsPublishing]  = useState(false);
+  const [publishError,  setPublishError]  = useState('');
 
-  const { uploadPreview } = mockAdminData;
-  const { weekDetected, employeesFound, rowsParsed, isDuplicate, previewRows } = uploadPreview;
+  useEffect(() => {
+    const stored = sessionStorage.getItem('pendingSchedule');
+    if (!stored) {
+      router.push('/admin');
+      return;
+    }
+
+    let parsed;
+    try {
+      parsed = JSON.parse(stored);
+    } catch {
+      router.push('/admin');
+      return;
+    }
+
+    setPending(parsed);
+
+    // Check for duplicate week in Firestore
+    async function checkDuplicate() {
+      try {
+        const weekSnap = await getDoc(doc(db, 'schedules', parsed.weekId));
+        if (weekSnap.exists()) setIsDuplicate(true);
+      } catch (err) {
+        console.error('[upload] duplicate check failed:', err);
+      }
+    }
+
+    checkDuplicate();
+  }, [router]);
+
+  async function handlePublish() {
+    if (!confirmed || isPublishing || !pending) return;
+
+    setIsPublishing(true);
+    setPublishError('');
+
+    try {
+      const batch = writeBatch(db);
+      const weekNum = getWeekNumber(pending.weekId);
+
+      // Parent week doc — used for duplicate detection on future uploads
+      batch.set(doc(db, 'schedules', pending.weekId), {
+        weekLabel:     pending.weekLabel,
+        weekId:        pending.weekId,
+        employeeCount: pending.employeeCount,
+        publishedAt:   serverTimestamp(),
+      });
+
+      // One doc per employee
+      pending.employees.forEach(emp => {
+        const empRef = doc(db, 'schedules', pending.weekId, 'employees', emp.scheduleKey);
+        batch.set(empRef, {
+          name:        emp.name,
+          weekLabel:   pending.weekLabel,
+          weekId:      pending.weekId,
+          weekNumber:  weekNum,
+          group:       '',
+          days:        buildWeekDays(pending.weekId, emp.days),
+          isPublished: true,
+          uploadedAt:  serverTimestamp(),
+        });
+      });
+
+      await batch.commit();
+      sessionStorage.removeItem('pendingSchedule');
+      router.push('/admin/schedule');
+    } catch (err) {
+      console.error('[upload] publish failed:', err);
+      setPublishError('Publish failed. Check your connection and try again.');
+      setIsPublishing(false);
+    }
+  }
 
   const DAYS = ['MON', 'TUE', 'WED', 'THU', 'FRI'];
 
-  function handlePublish() {
-    if (!confirmed) return;
-    // Phase 2: write to Firestore here, then navigate
-    router.push('/admin/schedule');
+  // Derive display values from parsed data
+  const weekDetected   = pending?.weekLabel ?? '—';
+  const employeesFound = pending?.employeeCount ?? 0;
+  const rowsParsed     = (pending?.employeeCount ?? 0) * 5;
+  const previewRows    = (pending?.employees ?? []).slice(0, 8).map(emp => ({
+    name: emp.name,
+    days: emp.days.map(d => d.value),
+  }));
+
+  // Loading state while sessionStorage is being read
+  if (!pending) {
+    return (
+      <div style={styles.page}>
+        <div style={loadingStyles.container}>
+          <div style={loadingStyles.spinner} />
+          <p style={loadingStyles.text}>Loading preview…</p>
+        </div>
+      </div>
+    );
   }
 
   function getCellStyle(value) {
@@ -60,7 +150,7 @@ export default function UploadPreviewPage() {
         <h1 style={styles.pageTitle}>Review Before Publishing</h1>
       </div>
 
-      {/* ── Duplicate week warning ── */}
+      {/* ── Duplicate week warning — shown if schedules/{weekId} already exists ── */}
       {isDuplicate && (
         <div style={styles.warningBox}>
           <div style={styles.warningIcon}>
@@ -136,29 +226,64 @@ export default function UploadPreviewPage() {
         <button
           onClick={() => router.push('/admin')}
           style={styles.cancelButton}
+          disabled={isPublishing}
         >
           Cancel
         </button>
         <button
           onClick={handlePublish}
-          disabled={!confirmed}
+          disabled={!confirmed || isPublishing}
           style={{
             ...styles.publishButton,
-            background:  confirmed ? colors.blue   : colors.border,
-            color:       confirmed ? colors.white  : colors.textLight,
-            cursor:      confirmed ? 'pointer'     : 'not-allowed',
-            boxShadow:   confirmed
+            background: (confirmed && !isPublishing) ? colors.blue   : colors.border,
+            color:      (confirmed && !isPublishing) ? colors.white  : colors.textLight,
+            cursor:     (confirmed && !isPublishing) ? 'pointer'     : 'not-allowed',
+            boxShadow:  (confirmed && !isPublishing)
               ? '0 2px 8px rgba(37,99,235,0.25)'
               : 'none',
+            opacity: isPublishing ? 0.7 : 1,
           }}
         >
-          Publish Schedule
+          {isPublishing
+            ? `Publishing ${employeesFound} employees…`
+            : 'Publish Schedule'}
         </button>
       </div>
+
+      {publishError && (
+        <p style={styles.publishError}>{publishError}</p>
+      )}
 
     </div>
   );
 }
+
+// -----------------------------------------------------------------------------
+// Loading state
+// -----------------------------------------------------------------------------
+const loadingStyles = {
+  container: {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 14,
+    padding: '80px 28px',
+  },
+  spinner: {
+    width: 32,
+    height: 32,
+    border: '3px solid #E5EAFF',
+    borderTopColor: '#2563EB',
+    borderRadius: '50%',
+    animation: 'spin 0.7s linear infinite',
+  },
+  text: {
+    fontSize: 13,
+    color: '#64748B',
+  },
+};
 
 // -----------------------------------------------------------------------------
 // StatCard
@@ -312,7 +437,13 @@ const styles = {
     borderRadius: 8,
     fontSize: 13,
     fontWeight: 700,
-    transition: 'background 0.15s ease, box-shadow 0.15s ease',
+    transition: 'background 0.15s ease, box-shadow 0.15s ease, opacity 0.15s',
+  },
+  publishError: {
+    fontSize: 12,
+    color: '#EF4444',
+    textAlign: 'right',
+    marginTop: -12,
   },
 };
 

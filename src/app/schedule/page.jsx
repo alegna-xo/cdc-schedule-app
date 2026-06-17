@@ -8,7 +8,7 @@ import BottomNav from '@/features/employee/BottomNav';
 import { LockIcon, InboxIcon } from '@/components/ui/Icon';
 import colors from '@/styles/colors';
 import { auth, db } from '@/lib/firebase';
-import { getCurrentWeekId } from '@/lib/scheduleUtils';
+import { getCurrentWeekId, nameToScheduleKey } from '@/lib/scheduleUtils';
 
 /**
  * SchedulePage - Screens 3 and 4
@@ -40,13 +40,21 @@ export default function SchedulePage() {
 
     async function fetchData() {
       try {
-        const weekId = getCurrentWeekId();
-        const [userSnap, schedSnap] = await Promise.all([
-          getDoc(doc(db, 'users', user.uid)),
-          getDoc(doc(db, 'schedules', weekId, 'employees', user.uid)),
-        ]);
-        setUserData(userSnap.exists() ? userSnap.data() : null);
-        setScheduleData(schedSnap.exists() ? schedSnap.data() : null);
+        const weekId   = getCurrentWeekId();
+
+        // Fetch user profile first to derive the scheduleKey
+        const userSnap = await getDoc(doc(db, 'users', user.uid));
+        const userData = userSnap.exists() ? userSnap.data() : null;
+        setUserData(userData);
+
+        // scheduleKey must match the key written by the admin upload flow
+        const scheduleKey = userData?.name ? nameToScheduleKey(userData.name) : '';
+        if (scheduleKey) {
+          const schedSnap = await getDoc(
+            doc(db, 'schedules', weekId, 'employees', scheduleKey)
+          );
+          setScheduleData(schedSnap.exists() ? schedSnap.data() : null);
+        }
       } catch (err) {
         console.error('[schedule] fetch failed:', err);
       } finally {
