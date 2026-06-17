@@ -2,9 +2,11 @@
 
 import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { CheckIcon } from '@/components/ui/Icon';
 import mockEmployees from '@/data/mockEmployees';
 import colors from '@/styles/colors';
+import { auth, db } from '@/lib/firebase';
 
 /**
  * OnboardingPage — Screen 2: Name Claim
@@ -23,6 +25,8 @@ export default function OnboardingPage() {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedId, setSelectedId] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   // Filter employee list based on search input
   // useMemo prevents re-filtering on every keystroke unless query or list changes
@@ -37,11 +41,32 @@ export default function OnboardingPage() {
   const selectedEmployee = mockEmployees.find(emp => emp.id === selectedId);
   const hasSelection = selectedId !== null;
 
-  // Phase 1 mock — no real auth yet
-  // Phase 2: write claim to Firestore, then redirect
-  function handleClaim() {
-    if (!hasSelection) return;
-    router.push('/schedule');
+  async function handleClaim() {
+    if (!hasSelection || loading) return;
+
+    const user = auth.currentUser;
+    if (!user) {
+      setError('Session expired. Please sign in again.');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
+    try {
+      await setDoc(doc(db, 'users', user.uid), {
+        name: selectedEmployee.name,
+        email: user.email,
+        role: 'employee',
+        nameClaimed: true,
+        createdAt: serverTimestamp(),
+      });
+      router.push('/schedule');
+    } catch (err) {
+      console.error('[onboarding] Firestore write failed:', err);
+      setError('Something went wrong. Please try again.');
+      setLoading(false);
+    }
   }
 
   return (
@@ -107,26 +132,33 @@ export default function OnboardingPage() {
       <div style={styles.footer}>
         <button
           onClick={handleClaim}
-          disabled={!hasSelection}
-          aria-disabled={!hasSelection}
+          disabled={!hasSelection || loading}
+          aria-disabled={!hasSelection || loading}
           style={{
             ...styles.continueButton,
             background: hasSelection ? colors.blue : colors.border,
             color: hasSelection ? colors.white : colors.textLight,
-            cursor: hasSelection ? 'pointer' : 'not-allowed',
+            cursor: (hasSelection && !loading) ? 'pointer' : 'not-allowed',
             boxShadow: hasSelection
               ? '0 2px 10px rgba(37, 99, 235, 0.25)'
               : 'none',
+            opacity: loading ? 0.7 : 1,
           }}
         >
-          {hasSelection
-            ? `That's me — continue`
-            : 'Select your name above'}
+          {loading
+            ? 'Saving…'
+            : hasSelection
+              ? `That's me — continue`
+              : 'Select your name above'}
         </button>
 
-        <p style={styles.helperText}>
-          Name not listed? Contact your supervisor.
-        </p>
+        {error ? (
+          <p style={styles.errorText}>{error}</p>
+        ) : (
+          <p style={styles.helperText}>
+            Name not listed? Contact your supervisor.
+          </p>
+        )}
       </div>
 
     </main>
@@ -261,5 +293,10 @@ const styles = {
     textAlign: 'center',
     fontSize: 11,
     color: colors.textLight,
+  },
+  errorText: {
+    textAlign: 'center',
+    fontSize: 11,
+    color: colors.red,
   },
 };
