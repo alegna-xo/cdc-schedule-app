@@ -1,30 +1,86 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { doc, getDoc } from 'firebase/firestore';
 import EmployeePageHeader from '@/features/employee/EmployeePageHeader';
 import BottomNav from '@/features/employee/BottomNav';
 import { LockIcon, InboxIcon } from '@/components/ui/Icon';
-import mockSchedule from '@/data/mockSchedule';
 import colors from '@/styles/colors';
+import { auth, db } from '@/lib/firebase';
+import { getCurrentWeekId } from '@/lib/scheduleUtils';
 
 /**
  * SchedulePage - Screens 3 and 4
  * Route: /schedule
  *
  * Screen 3: Full weekly schedule with day tabs (isPublished: true)
- * Screen 4: No Schedule Yet empty state  (isPublished: false)
+ * Screen 4: No Schedule Yet empty state  (isPublished: false / no doc)
  *
- * Phase 2: Replace mockSchedule import with a Firestore fetch.
- * Null document or isPublished false = Screen 4.
- * Document exists and isPublished true  = Screen 3.
+ * Firestore query structure:
+ *   users/{uid}                          → name, role (employee profile)
+ *   schedules/{weekId}/employees/{uid}   → isPublished, weekLabel, weekNumber,
+ *                                          weekId, group, days[]
+ *
+ * weekId is derived from the Monday of the current week: "week-YYYY-MM-DD"
  */
 export default function SchedulePage() {
   const router = useRouter();
   const [activeDayIndex, setActiveDayIndex] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [userData, setUserData] = useState(null);
+  const [scheduleData, setScheduleData] = useState(null);
 
-  const { employee, weekLabel, weekNumber, days, isPublished } = mockSchedule;
+  useEffect(() => {
+    const user = auth.currentUser;
+    if (!user) {
+      router.push('/login');
+      return;
+    }
+
+    async function fetchData() {
+      try {
+        const weekId = getCurrentWeekId();
+        const [userSnap, schedSnap] = await Promise.all([
+          getDoc(doc(db, 'users', user.uid)),
+          getDoc(doc(db, 'schedules', weekId, 'employees', user.uid)),
+        ]);
+        setUserData(userSnap.exists() ? userSnap.data() : null);
+        setScheduleData(schedSnap.exists() ? schedSnap.data() : null);
+      } catch (err) {
+        console.error('[schedule] fetch failed:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchData();
+  }, [router]);
+
+  const employee = {
+    name:     userData?.name ?? '',
+    initials: userData?.name ? getInitials(userData.name) : '?',
+    group:    scheduleData?.group ?? '',
+  };
+
+  const weekLabel  = scheduleData?.weekLabel  ?? '';
+  const weekNumber = scheduleData?.weekNumber ?? '';
+  const days       = scheduleData?.days       ?? [];
+  const isPublished = scheduleData?.isPublished ?? false;
+
   const activeDay = days[activeDayIndex];
+
+  // Loading state
+  if (loading) {
+    return (
+      <main style={styles.main}>
+        <div style={loadingStyles.container}>
+          <div style={loadingStyles.spinner} />
+          <p style={loadingStyles.text}>Loading your schedule…</p>
+        </div>
+      </main>
+    );
+  }
 
   // Screen 4 - No Schedule Yet
   if (!isPublished) {
@@ -210,6 +266,15 @@ function NoScheduleContent() {
 // -----------------------------------------------------------------------------
 // Helpers
 // -----------------------------------------------------------------------------
+function getInitials(name) {
+  return name
+    .split(' ')
+    .map(part => part[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
+}
+
 function calcShiftMinutes(start, end) {
   if (!start || !end) return 0;
   const toMins = (t) => {
@@ -229,6 +294,30 @@ function formatShiftDuration(totalMinutes) {
 // -----------------------------------------------------------------------------
 // Styles
 // -----------------------------------------------------------------------------
+const loadingStyles = {
+  container: {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 14,
+    minHeight: '100dvh',
+  },
+  spinner: {
+    width: 32,
+    height: 32,
+    border: '3px solid ' + colors.border,
+    borderTopColor: colors.blue,
+    borderRadius: '50%',
+    animation: 'spin 0.7s linear infinite',
+  },
+  text: {
+    fontSize: 13,
+    color: colors.textMuted,
+  },
+};
+
 const styles = {
   main: {
     minHeight: '100dvh',
