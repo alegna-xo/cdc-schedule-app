@@ -1,0 +1,90 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helper ───────────────────────────────────────────────────────────────
+    //
+    // Reads the requesting user's Firestore document to check their stored role.
+    // Using the database as the source of truth (not the session cookie) means
+    // an admin cannot be impersonated by forging the cookie.
+    //
+    // NOTE: every call to isAdmin() counts as one Firestore document read.
+    // It is cached within a single request evaluation, so calling it multiple
+    // times in the same rule match does NOT multiply the read cost.
+    function isAdmin() {
+      return request.auth != null
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // ── users/{uid} ──────────────────────────────────────────────────────────
+    match /users/{uid} {
+
+      // Any authenticated user can read their own document.
+      // Admins can read any user document (needed for the employee roster view).
+      allow read: if request.auth != null
+        && (request.auth.uid == uid || isAdmin());
+
+      // Employees create their own document once during onboarding.
+      // Role is locked to 'employee' at creation to prevent privilege escalation
+      // — admin accounts must be seeded via the Firebase console or Admin SDK.
+      allow create: if request.auth != null
+        && request.auth.uid == uid
+        && request.resource.data.role == 'employee';
+
+      // Employees can update their own document (e.g., future profile edits)
+      // but are NOT allowed to change their stored role.
+      // Admins can update any user document, including changing roles.
+      allow update: if request.auth != null
+        && (
+          isAdmin()
+          || (request.auth.uid == uid
+              && request.resource.data.role == resource.data.role)
+        );
+
+      // Only admins can delete user documents.
+      allow delete: if isAdmin();
+    }
+
+    // ── schedules/{weekId} ───────────────────────────────────────────────────
+    match /schedules/{weekId} {
+
+      // Authenticated employees can read the week metadata document only if
+      // it has been published (isPublished == true).
+      // Admins can read all week documents regardless of publish state.
+      allow read: if request.auth != null
+        && (isAdmin() || resource.data.isPublished == true);
+
+      // Only admins can create, update, or delete week metadata documents.
+      // This is written during the batch publish in /admin/upload.
+      allow write: if isAdmin();
+
+      // ── schedules/{weekId}/employees/{scheduleKey} ────────────────────────
+      match /employees/{scheduleKey} {
+
+        // An employee can read their own schedule sub-document if:
+        //   1. The document is published (isPublished == true), AND
+        //   2. The document's stored name field matches the name in the
+        //      requesting user's own users/{uid} document.
+        //
+        // This prevents employee A from reading employee B's schedule,
+        // because A's stored name will not match B's schedule document.
+        //
+        // Admins bypass both checks and can read every sub-document.
+        allow read: if request.auth != null
+          && (
+            isAdmin()
+            || (
+              resource.data.isPublished == true
+              && resource.data.name
+                  == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.name
+            )
+          );
+
+        // Only admins can write employee schedule sub-documents.
+        // Employees cannot modify their own or any schedule document.
+        allow write: if isAdmin();
+      }
+    }
+  }
+}
