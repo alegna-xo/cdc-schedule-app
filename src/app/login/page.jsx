@@ -2,24 +2,20 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { doc, getDoc } from 'firebase/firestore';
 import CDCShield from '@/components/ui/CDCShield';
 import { GoogleIcon } from '@/components/ui/Icon';
 import colors from '@/styles/colors';
-import { db } from '@/lib/firebase';
 import { signInWithGoogle } from '@/lib/auth';
 
 /**
  * LoginPage - Screen 1
  * Route: /login
  *
- * Single entry point for all users.
- * Signs in with Google OAuth, then reads Firestore users/{uid} to route:
+ * Signs in with Google OAuth → POSTs ID token to /api/auth/session →
+ * server sets HttpOnly cookie with role from Firestore → client redirects.
  *   - role === 'admin'      → /admin
  *   - nameClaimed === true  → /schedule
- *   - no document           → /onboarding
- *
- * DEV MODE block stays until Firebase user collection is fully seeded.
+ *   - no user document yet  → /onboarding
  */
 export default function LoginPage() {
   const router = useRouter();
@@ -31,25 +27,30 @@ export default function LoginPage() {
     setError('');
     try {
       const result = await signInWithGoogle();
-      const uid = result.user.uid;
+      const idToken = await result.user.getIdToken();
 
-      const userSnap = await getDoc(doc(db, 'users', uid));
+      // Exchange ID token for a server-set HttpOnly session cookie.
+      // The server reads role + nameClaimed from Firestore using the token as auth.
+      const res = await fetch('/api/auth/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken }),
+      });
 
-      if (!userSnap.exists()) {
+      if (!res.ok) throw new Error('Session creation failed');
+
+      const { role, nameClaimed, userExists } = await res.json();
+
+      if (!userExists) {
         router.push('/onboarding');
-        return;
-      }
-
-      const userData = userSnap.data();
-      if (userData.role === 'admin') {
+      } else if (role === 'admin') {
         router.push('/admin');
-      } else if (userData.nameClaimed === true) {
+      } else if (nameClaimed) {
         router.push('/schedule');
       } else {
         router.push('/onboarding');
       }
     } catch (err) {
-      // User closed popup or auth failed — don't treat as fatal
       if (err.code !== 'auth/popup-closed-by-user' && err.code !== 'auth/cancelled-popup-request') {
         setError('Sign-in failed. Please try again.');
       }

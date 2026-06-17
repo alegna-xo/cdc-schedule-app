@@ -13,6 +13,7 @@ export async function signInWithGoogle() {
 }
 
 export async function signOutUser() {
+  await fetch('/api/auth/session', { method: 'DELETE' });
   return signOut(auth);
 }
 
