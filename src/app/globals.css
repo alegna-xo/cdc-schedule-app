@@ -35,3 +35,7 @@ textarea {
 button {
   cursor: pointer;
 }
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

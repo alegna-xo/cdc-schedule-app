@@ -1,33 +1,60 @@
 'use client';
 
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { doc, getDoc } from 'firebase/firestore';
 import CDCShield from '@/components/ui/CDCShield';
 import { GoogleIcon } from '@/components/ui/Icon';
 import colors from '@/styles/colors';
+import { db } from '@/lib/firebase';
+import { signInWithGoogle } from '@/lib/auth';
 
 /**
  * LoginPage - Screen 1
  * Route: /login
  *
  * Single entry point for all users.
+ * Signs in with Google OAuth, then reads Firestore users/{uid} to route:
+ *   - role === 'admin'      → /admin
+ *   - nameClaimed === true  → /schedule
+ *   - no document           → /onboarding
  *
- * Phase 1: Two dev-mode buttons route to employee or admin flow manually.
- *          The "Sign in with Google" button is a placeholder UI only.
- *
- * Phase 2: Remove the dev mode section entirely.
- *          "Sign in with Google" triggers Firebase Google OAuth.
- *          After sign-in, check user role in Firestore:
- *            - role === 'admin'    → router.push('/admin')
- *            - nameClaimed: false  → router.push('/onboarding')
- *            - nameClaimed: true   → router.push('/schedule')
+ * DEV MODE block stays until Firebase user collection is fully seeded.
  */
 export default function LoginPage() {
   const router = useRouter();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  // Phase 2: replace this with Firebase signInWithPopup(auth, googleProvider)
-  function handleGoogleSignIn() {
-    // Placeholder - no action in Phase 1
-    // Real auth goes here in Phase 2
+  async function handleGoogleSignIn() {
+    setLoading(true);
+    setError('');
+    try {
+      const result = await signInWithGoogle();
+      const uid = result.user.uid;
+
+      const userSnap = await getDoc(doc(db, 'users', uid));
+
+      if (!userSnap.exists()) {
+        router.push('/onboarding');
+        return;
+      }
+
+      const userData = userSnap.data();
+      if (userData.role === 'admin') {
+        router.push('/admin');
+      } else if (userData.nameClaimed === true) {
+        router.push('/schedule');
+      } else {
+        router.push('/onboarding');
+      }
+    } catch (err) {
+      // User closed popup or auth failed — don't treat as fatal
+      if (err.code !== 'auth/popup-closed-by-user' && err.code !== 'auth/cancelled-popup-request') {
+        setError('Sign-in failed. Please try again.');
+      }
+      setLoading(false);
+    }
   }
 
   function handleEmployeeLogin() {
@@ -60,17 +87,29 @@ export default function LoginPage() {
           </p>
         </div>
 
-        {/* Google SSO button - Phase 2: wire to Firebase OAuth */}
+        {/* Google SSO button */}
         <button
           onClick={handleGoogleSignIn}
-          style={styles.googleButton}
+          style={{
+            ...styles.googleButton,
+            ...(loading ? styles.googleButtonLoading : {}),
+          }}
           aria-label="Sign in with Google"
+          disabled={loading}
         >
-          <GoogleIcon size={20} />
-          <span>Sign in with Google</span>
+          {loading ? (
+            <span style={styles.spinner} />
+          ) : (
+            <GoogleIcon size={20} />
+          )}
+          <span>{loading ? 'Signing in…' : 'Sign in with Google'}</span>
         </button>
 
-        <p style={styles.helperText}>Use your CDC work Gmail account</p>
+        {error ? (
+          <p style={styles.errorText}>{error}</p>
+        ) : (
+          <p style={styles.helperText}>Use your CDC work Gmail account</p>
+        )}
 
         <div style={styles.divider} />
 
@@ -82,12 +121,11 @@ export default function LoginPage() {
           </p>
         </div>
 
-        {/* ── Dev Mode — Phase 1 only ── */}
-        {/* DELETE this entire block when Firebase auth is implemented in Phase 2 */}
+        {/* ── DEV MODE — remove before go-live ── */}
         <div style={styles.devBlock}>
-          <p style={styles.devLabel}>DEV MODE · Phase 1 Only</p>
+          <p style={styles.devLabel}>DEV MODE · Bypass Auth</p>
           <p style={styles.devSubtext}>
-            Firebase auth not yet implemented. Select a role to navigate manually.
+            Skip Google sign-in and navigate directly. Remove before go-live.
           </p>
           <div style={styles.devButtons}>
             <button
@@ -196,11 +234,31 @@ const styles = {
     color: colors.textPrimary,
     boxShadow: '0 2px 12px rgba(37,99,235,0.1)',
     cursor: 'pointer',
+    transition: 'opacity 0.15s',
+  },
+  googleButtonLoading: {
+    opacity: 0.6,
+    cursor: 'not-allowed',
+  },
+  spinner: {
+    width: 20,
+    height: 20,
+    border: '2.5px solid ' + colors.border,
+    borderTopColor: colors.blue,
+    borderRadius: '50%',
+    animation: 'spin 0.7s linear infinite',
+    flexShrink: 0,
   },
   helperText: {
     textAlign: 'center',
     fontSize: 11,
     color: colors.textLight,
+    marginTop: -8,
+  },
+  errorText: {
+    textAlign: 'center',
+    fontSize: 11,
+    color: colors.red,
     marginTop: -8,
   },
   divider: {
